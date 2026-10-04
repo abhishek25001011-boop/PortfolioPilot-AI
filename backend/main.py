@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import re
+from pathlib import Path
 from typing import Any, Literal
 
 import httpx
@@ -10,7 +11,7 @@ from fastapi import FastAPI, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -19,6 +20,7 @@ OLLAMA_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen-coder:latest")
 OLLAMA_TIMEOUT = float(os.getenv("OLLAMA_TIMEOUT_SECONDS", "180"))
 MAX_REPAIR_INPUT = 16000
+DIST_DIR = Path(__file__).resolve().parent.parent / "dist"
 
 
 class Project(BaseModel):
@@ -316,3 +318,37 @@ async def generate(req: GenerateRequest) -> GenerateResponse:
         raise StarletteHTTPException(status_code=504, detail="Ollama timed out. Try again or use a smaller model.") from exc
     except httpx.RequestError as exc:
         raise StarletteHTTPException(status_code=502, detail="Could not communicate with Ollama.") from exc
+
+
+def frontend_response(path: str = "") -> FileResponse | JSONResponse:
+    """Serve built frontend files, falling back to index.html for client routes."""
+    root = DIST_DIR.resolve()
+    index = root / "index.html"
+    if not index.is_file():
+        return JSONResponse(
+            status_code=404,
+            content={"error": APIError(code="frontend_not_built", message="The frontend build is missing.").model_dump()},
+        )
+
+    if path:
+        candidate = (root / path).resolve()
+        try:
+            candidate.relative_to(root)
+        except ValueError:
+            raise StarletteHTTPException(status_code=404, detail="Not Found")
+        if candidate.is_file():
+            return FileResponse(candidate)
+    return FileResponse(index)
+
+
+@app.get("/", include_in_schema=False, response_model=None)
+async def frontend_root() -> FileResponse | JSONResponse:
+    return frontend_response()
+
+
+@app.get("/{frontend_path:path}", include_in_schema=False, response_model=None)
+async def frontend_routes(frontend_path: str) -> FileResponse | JSONResponse:
+    # Unknown API paths must remain API 404s instead of returning the SPA shell.
+    if frontend_path == "api" or frontend_path.startswith("api/"):
+        raise StarletteHTTPException(status_code=404, detail="Not Found")
+    return frontend_response(frontend_path)

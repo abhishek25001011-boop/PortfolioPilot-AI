@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: portfoliopilot-ai
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/health
+    envVars:
+      - key: OLLAMA_MODEL
+        value: qwen-coder:latest

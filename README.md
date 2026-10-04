@@ -64,7 +64,18 @@ The provider boundary is `backend/main.py`: model name, endpoint, timeout, messa
 
 ## Deployment
 
-The generated ZIP includes `index.html`, `styles.css`, and `script.js` and has no build step. Upload the extracted files to Netlify, deploy the repository root with Vercel, or enable GitHub Pages for a repository containing the files. For the PortfolioPilot application itself, deploy the built Vite `dist/` directory and host FastAPI separately, configuring `CORS_ORIGINS` and the Ollama endpoint for your server environment.
+### Render single-service deployment
+
+The generated ZIP includes `index.html`, `styles.css`, and `script.js` and has no build step. Upload the extracted files to Netlify, deploy the repository root with Vercel, or enable GitHub Pages for a repository containing the files.
+
+To deploy PortfolioPilot itself as one Render web service:
+
+1. Push the `deployment` branch to your Git provider and create a Render Blueprint from the repository, or create a Docker web service using the included `Dockerfile`.
+2. Render builds the Vite frontend into `dist/`, installs the FastAPI requirements, and runs both from the same service. The container start command binds Uvicorn to Render's `$PORT`; `/api/health` is the configured health check.
+3. Keep `VITE_API_BASE_URL` unset so the frontend sends `/api/*` requests to the same service. FastAPI serves the built assets and falls back to the React entry page for client-side routes.
+4. For live AI generation on Render, set `OLLAMA_BASE_URL` to an Ollama server reachable from the Render service. The local-development default `http://localhost:11434` expects Ollama on the same machine and is not reachable from a Render container. `OLLAMA_MODEL` defaults to `qwen-coder:latest`; install that model on the Ollama host. Do not put credentials in the repository; configure any required private endpoint credentials through Render environment settings.
+
+Local development remains unchanged: start Ollama on the development machine, then run FastAPI and Vite as described in Setup. The Vite dev server continues proxying `/api` to `localhost:8000`.
 
 ## Built with Open-Source AI
 
